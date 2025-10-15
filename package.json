@@ -1,0 +1,39 @@
+{
+  "name": "geek-title-electron",
+  "version": "0.1.0",
+  "description": "基于 Electron 的批量图片AI标题生成器（支持OpenAI兼容/自定义基址，含中英标题、过滤、压缩、重命名、导出）",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build:renderer": "vite build",
+    "start": "npm run build:renderer && electron .",
+    "dev:electron": "electron .",
+    "pack": "npm run build:renderer && electron-builder --dir",
+    "build": "npm run build:renderer && electron-builder"
+  },
+  "build": {
+    "appId": "com.example.geektitle",
+    "productName": "极客标题",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "src/main.js"
+    }
+  },
+  "dependencies": {
+    "electron-store": "^9.0.0",
+    "node-fetch": "^3.3.2",
+    "sharp": "^0.33.5",
+    "vue": "^3.5.22"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "vite": "^7.1.10"
+  }
+}
