@@ -9,5 +9,7 @@ contextBridge.exposeInMainWorld('gt', {
   setSettings: (obj) => ipcRenderer.invoke('set-settings', obj),
   generateTitles: (payload) => ipcRenderer.invoke('generate-titles', payload),
   renameByTitle: (items, pattern) => ipcRenderer.invoke('rename-by-title', items, pattern),
-  saveCSV: (rows, filePath) => ipcRenderer.invoke('save-csv', rows, filePath)
+  saveCSV: (rows, filePath) => ipcRenderer.invoke('save-csv', rows, filePath),
+  saveExcel: (data) => ipcRenderer.invoke('save-excel', data),
+  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath)
 });

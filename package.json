@@ -11,18 +11,36 @@
     "start": "npm run build:renderer && electron .",
     "dev:electron": "electron .",
     "pack": "npm run build:renderer && electron-builder --dir",
-    "build": "npm run build:renderer && electron-builder"
+    "build": "npm run build:renderer && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
   },
   "build": {
     "appId": "com.example.geektitle",
     "productName": "极客标题",
     "files": [
       "src/**/*",
+      "dist/renderer/**/*",
       "package.json"
     ],
     "extraMetadata": {
       "main": "src/main.js"
-    }
+    },
+    "win": {
+      "target": "nsis",
+      "sign": false,
+      "signAndEditExecutable": false,
+      "signDlls": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false
+    },
+    "forceCodeSigning": false,
+    "buildDependenciesFromSource": false
   },
   "dependencies": {
     "electron-store": "^9.0.0",
@@ -32,6 +50,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
+    "cross-env": "^7.0.3",
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "vite": "^7.1.10"

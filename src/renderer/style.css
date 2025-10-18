@@ -4,12 +4,13 @@ body, html { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFo
 .app { display: flex; flex-direction: column; height: 100vh; background: white; }
 
 /* 顶部工具栏样式 */
-.top-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #e5e6e8; }
+.top-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #f8f9fa; border-bottom: 1px solid #e5e6e8; flex-shrink: 0; }
 .toolbar-left { display: flex; gap: 8px; align-items: center; }
 .toolbar-right { display: flex; gap: 8px; align-items: center; }
 
 /* 主要内容区域 */
-.main-content { display: flex; flex: 1; }
+.main-content { display: flex; flex: 1; min-height: 0; transition: all 0.3s ease; }
+.main-content.has-results { flex: 0.6; }
 
 /* 左侧预览区域 */
 .left-panel { width: 45%; padding: 12px; background: white; }
@@ -62,3 +63,98 @@ button.primary:hover:not(:disabled) { background: #3367d6; }
 .results-table th { background: #f8f9fa; padding: 8px; text-align: left; border: 1px solid #e5e6e8; }
 .results-table td { padding: 8px; border: 1px solid #e5e6e8; }
 .results-table tbody tr:nth-child(even) { background: #fafafa; }
+
+/* 弹窗样式 */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.modal-content { background: white; border-radius: 8px; padding: 24px; min-width: 400px; max-width: 500px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); }
+.modal-content h3 { margin: 0 0 20px 0; font-size: 18px; font-weight: 500; text-align: center; }
+.api-input-section { margin-bottom: 20px; }
+.api-input-section label { display: block; margin-bottom: 8px; font-weight: 500; }
+.api-key-input-wrapper { position: relative; display: flex; align-items: center; }
+.api-input-section input { width: 100%; padding: 10px 40px 10px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+.toggle-visibility-btn { position: absolute; right: 8px; background: none; border: none; cursor: pointer; padding: 4px; font-size: 16px; z-index: 1; }
+.toggle-visibility-btn:hover { background-color: #f0f0f0; border-radius: 50%; }
+.modal-buttons { display: flex; gap: 12px; justify-content: center; margin-bottom: 20px; }
+.modal-buttons button { padding: 8px 20px; border-radius: 4px; font-size: 14px; }
+.api-providers { border-top: 1px solid #eee; padding-top: 16px; }
+.api-providers p { margin: 8px 0; font-size: 13px; }
+.api-providers a { color: #4285f4; text-decoration: none; }
+.api-providers a:hover { text-decoration: underline; }
+
+/* API设置按钮 */
+.api-settings-btn { background: #4285f4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.api-settings-btn:hover { background: #3367d6; }
+.api-key-display { margin-top: 8px; color: #666; font-size: 12px; }
+.api-key-text { cursor: pointer; font-family: monospace; user-select: all; }
+.api-key-text:hover { background-color: #f0f0f0; padding: 1px 3px; border-radius: 3px; }
+.api-key-toggle-btn { background: none; border: none; cursor: pointer; margin-left: 4px; font-size: 12px; }
+.api-key-toggle-btn:hover { background-color: #f0f0f0; border-radius: 50%; }
+
+/* 进度条样式 */
+.progress-bar { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #4285f4, #34a853); transition: width 0.3s ease; }
+
+/* 日志样式 */
+.log-entry { margin-bottom: 2px; display: flex; gap: 8px; }
+.log-time { color: #666; font-size: 11px; min-width: 60px; }
+.log-message { color: #333; }
+.log-entry.success .log-message { color: #34a853; }
+.log-entry.error .log-message { color: #ea4335; }
+.log-entry.info .log-message { color: #4285f4; }
+.log-entry.warning .log-message { color: #fbbc04; }
+
+/* 状态样式 */
+.status-success { color: #34a853; font-size: 12px; }
+.status-error { color: #ea4335; font-size: 12px; }
+.status-processing { color: #4285f4; font-size: 12px; }
+.error-row { background-color: #fef7f7; }
+.error-row td { color: #d93025; }
+
+/* 表格优化 */
+.results-table td { max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 识别结果面板 */
+.results-panel { 
+  min-height: 250px; 
+  max-height: 400px; 
+  padding: 12px; 
+  background: white; 
+  border-top: 2px solid #e5e6e8; 
+  overflow-y: auto; 
+  flex-shrink: 0;
+}
+
+/* 当有结果时，调整主内容区域高度 */
+.main-content.has-results {
+  flex: 1;
+  min-height: 300px;
+}
+
+/* 结果面板折叠状态 */
+.results-panel.collapsed {
+  min-height: 50px;
+  max-height: 50px;
+}
+
+/* 折叠按钮 */
+.collapse-btn {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.collapse-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+/* 结果内容区域 */
+.results-content {
+  flex: 1;
+  overflow-y: auto;
+}

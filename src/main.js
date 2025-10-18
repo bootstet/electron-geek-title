@@ -111,6 +111,10 @@ function makePrompt(basePrompt, variables) {
 
 function sanitizeTitle(s, { language, filterChars, prefix, suffix, removeChineseWhenEnglish }) {
   let t = (s || '').trim();
+  
+  // 移除 **** 分隔符和周围的空格
+  t = t.replace(/\s*\*\*\*\*\s*/g, ' ');
+  
   if (filterChars) {
     const reg = new RegExp(`[${filterChars.replace(/[.*+?^${}()|[\]\\]/g, r => `\\${r}`)}]`, 'g');
     t = t.replace(reg, '');
@@ -118,8 +122,16 @@ function sanitizeTitle(s, { language, filterChars, prefix, suffix, removeChinese
   if (removeChineseWhenEnglish && language === 'en') {
     t = t.replace(/[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/g, '');
   }
-  if (prefix) t = `${prefix}${t}`;
-  if (suffix) t = `${t}${suffix}`;
+  
+  // 智能添加前缀：只有当标题不是以前缀开始时才添加
+  if (prefix) {
+    const prefixTrimmed = prefix.trim();
+    if (!t.startsWith(prefixTrimmed)) {
+      t = `${prefixTrimmed} ${t}`;
+    }
+  }
+  
+  if (suffix) t = `${t} ${suffix}`;
   return t.replace(/\s+/g, ' ').trim();
 }
 
@@ -135,7 +147,7 @@ ipcMain.handle('generate-titles', async (_evt, payload) => {
 
   async function runOne(file) {
     try {
-      const src = compress ? (await exportsHandlers.compressForCall(file, { minSize, quality })) : file;
+      const src = compress ? (await compressImageInternal(file, { minSize, quality })) : file;
       const variables = { category: category || '' };
       const prompt = makePrompt(basePrompt, variables);
       const res = await chatWithVision({ baseURL, apiKey, model, imagePath: src, prompt, maxTokens });
@@ -163,12 +175,26 @@ ipcMain.handle('generate-titles', async (_evt, payload) => {
   });
 });
 
-exportsHandlers = {
-  async compressForCall(file, opts) {
-    try { return await ipcMain.handle('compress-image')(null, file, opts); }
-    catch { return file; }
+// 直接在这里定义压缩函数
+async function compressImageInternal(file, opts = {}) {
+  const { minSize = 300, quality = 80 } = opts;
+  try {
+    const img = sharp(file).rotate();
+    const meta = await img.metadata();
+    const scale = Math.min(1, Math.max(minSize / (meta.width || minSize), minSize / (meta.height || minSize)));
+    let pipeline = img;
+    if (scale < 1) pipeline = pipeline.resize(Math.round((meta.width || 0) * scale));
+    const ext = path.extname(file).toLowerCase();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gt-'));
+    const out = path.join(tmpDir, path.basename(file));
+    if (ext === '.png') await pipeline.png({ quality }).toFile(out);
+    else await pipeline.jpeg({ quality }).toFile(out);
+    return out;
+  } catch (error) {
+    console.error('Compression failed:', error);
+    return file;
   }
-};
+}
 
 ipcMain.handle('rename-by-title', async (_evt, items, pattern = '{base}-{lang}') => {
   // pattern: {base} 原文件名无扩展, {lang} cn/en, {title}
@@ -196,11 +222,187 @@ ipcMain.handle('rename-by-title', async (_evt, items, pattern = '{base}-{lang}')
 });
 
 ipcMain.handle('save-csv', async (_evt, rows, filePath) => {
-  const csv = ['file,cn,en']
-    .concat(rows.map(r => `"${r.file.replace(/"/g, '""')}","${(r.cn||'').replace(/"/g, '""')}","${(r.en||'').replace(/"/g, '""')}"`))
-    .join('\n');
-  const target = filePath || dialog.showSaveDialogSync(mainWindow, { defaultPath: 'titles.csv' });
-  if (!target) return null;
-  fs.writeFileSync(target, csv, 'utf8');
-  return target;
+  console.log('=== CSV Export Debug ===');
+  console.log('Rows count:', rows?.length);
+  console.log('First row sample:', rows?.[0]);
+  console.log('FilePath provided:', filePath);
+
+  if (!rows || rows.length === 0) {
+    console.error('No data to export');
+    throw new Error('没有数据可导出');
+  }
+
+  // 通用 CSV 生成：从对象数组的键生成表头
+  let csvRows = [];
+  if (Array.isArray(rows) && typeof rows[0] === 'object' && rows[0] !== null) {
+    const headers = Object.keys(rows[0]);
+    csvRows.push(headers.join(','));
+    for (const row of rows) {
+      const line = headers
+        .map(h => `"${String((row[h] ?? '')).replace(/"/g, '""')}"`)
+        .join(',');
+      csvRows.push(line);
+    }
+  } else {
+    // 兜底：保持旧格式（file/cn/en/...）
+    csvRows = ['File Path,Chinese Title,English Title,Status,Error Message'];
+    (rows || []).forEach(row => {
+      const safePath = String(row.file || '').replace(/"/g, '""');
+      const safeCN = String(row.cn || '').replace(/"/g, '""');
+      const safeEN = String(row.en || '').replace(/"/g, '""');
+      const safeStatus = String(row.status || '');
+      const safeError = String(row.error || '').replace(/"/g, '""');
+      csvRows.push(`"${safePath}","${safeCN}","${safeEN}","${safeStatus}","${safeError}"`);
+    });
+  }
+
+  // 使用 CRLF 换行，并添加 UTF-8 BOM 以避免 Excel 下中文乱码
+  const csvContent = '\uFEFF' + csvRows.join('\r\n');
+  console.log('CSV content preview:', csvContent.substring(0, 200));
+
+  let target = filePath;
+  console.log('Target file path before dialog:', target);
+  
+  if (!target) {
+    try {
+      // 生成带时间戳的默认文件名
+      const now = new Date();
+      const timestamp = now.getFullYear().toString() + 
+                       (now.getMonth() + 1).toString().padStart(2, '0') + 
+                       now.getDate().toString().padStart(2, '0') + '_' +
+                       now.getHours().toString().padStart(2, '0') + 
+                       now.getMinutes().toString().padStart(2, '0') + 
+                       now.getSeconds().toString().padStart(2, '0');
+      const defaultFileName = `titles_${timestamp}.csv`;
+      console.log('Generated default filename:', defaultFileName);
+      
+      console.log('Showing save dialog...');
+      
+      // 设置默认保存路径为D盘根目录
+      const defaultDir = 'D:\\';
+      const fullDefaultPath = path.join(defaultDir, defaultFileName);
+      console.log('Default save path:', fullDefaultPath);
+      
+      // 确保D盘存在，如果不存在则使用桌面
+      let finalDefaultPath;
+      if (fs.existsSync('D:\\')) {
+        finalDefaultPath = fullDefaultPath;
+      } else {
+        // 如果D盘不存在，使用桌面
+        const desktopPath = path.join(os.homedir(), 'Desktop');
+        finalDefaultPath = path.join(desktopPath, defaultFileName);
+      }
+      console.log('Final default save path:', finalDefaultPath);
+      
+      const result = dialog.showSaveDialogSync(mainWindow, {
+        title: '保存CSV文件',
+        defaultPath: finalDefaultPath,
+        filters: [
+          { name: 'CSV文件', extensions: ['csv'] },
+          { name: '所有文件', extensions: ['*'] }
+        ]
+      });
+      target = result;
+      console.log('Dialog result:', target);
+    } catch (dialogError) {
+      console.error('Dialog error:', dialogError);
+      throw new Error(`对话框错误: ${dialogError.message}`);
+    }
+  }
+
+  if (!target) {
+    console.log('No target selected');
+    return null;
+  }
+
+  try {
+    console.log('Writing to:', target);
+    // 确保目录存在
+    const targetDir = path.dirname(target);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    fs.writeFileSync(target, csvContent, 'utf8');
+    console.log('File written successfully');
+    return target;
+  } catch (error) {
+    console.error('Write file error:', error);
+    throw new Error(`保存文件失败: ${error.message}`);
+  }
+});
+
+// 添加Excel导出功能
+ipcMain.handle('check-file-exists', async (_evt, filePath) => {
+  try {
+    const stats = fs.statSync(filePath);
+    return { exists: true, size: stats.size };
+  } catch (error) {
+    return { exists: false, error: error.message };
+  }
+});
+
+ipcMain.handle('save-excel', async (_evt, data) => {
+  try {
+    // 生成带时间戳的默认文件名
+    const now = new Date();
+    const timestamp = now.getFullYear().toString() + 
+                     (now.getMonth() + 1).toString().padStart(2, '0') + 
+                     now.getDate().toString().padStart(2, '0') + '_' +
+                     now.getHours().toString().padStart(2, '0') + 
+                     now.getMinutes().toString().padStart(2, '0') + 
+                     now.getSeconds().toString().padStart(2, '0');
+    const defaultFileName = `titles_${timestamp}.xlsx`;
+    
+    // 设置默认保存路径为D盘根目录
+    const defaultDir = 'D:\\';
+    const fullDefaultPath = path.join(defaultDir, defaultFileName);
+    console.log('Excel default save path:', fullDefaultPath);
+    
+    // 确保D盘存在，如果不存在则使用桌面
+    let finalDefaultPath;
+    if (fs.existsSync('D:\\')) {
+      finalDefaultPath = fullDefaultPath;
+    } else {
+      // 如果D盘不存在，使用桌面
+      const desktopPath = path.join(os.homedir(), 'Desktop');
+      finalDefaultPath = path.join(desktopPath, defaultFileName);
+    }
+    console.log('Excel final default save path:', finalDefaultPath);
+    
+    const result = dialog.showSaveDialogSync(mainWindow, {
+      title: '保存Excel文件',
+      defaultPath: finalDefaultPath,
+      filters: [
+        { name: 'Excel文件', extensions: ['xlsx'] },
+        { name: 'CSV文件', extensions: ['csv'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    });
+    
+    if (!result) return null;
+    
+    // 确保文件名没有非法字符
+    const target = result.replace(/[<>:"|?*]/g, '_');
+    
+    // 由于没有xlsx库，创建 CSV格式(但保持用户选择的扩展名)
+    const headers = Object.keys(data[0] || {});
+    const csv = [headers.join(',')]
+      .concat(data.map(row => 
+        headers.map(h => `"${String(row[h] || '').replace(/"/g, '""')}"`).join(',')
+      ))
+      .join('\r\n'); // 使用 CRLF 换行
+    
+    // 确保目录存在
+    const targetDir = path.dirname(target);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(target, '\uFEFF' + csv, 'utf8');
+    console.log('Excel file written successfully to:', target);
+    return target;
+  } catch (error) {
+    console.error('Excel export failed:', error);
+    throw new Error(`导出文件失败: ${error.message}`);
+  }
 });
