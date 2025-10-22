@@ -367,6 +367,27 @@ ipcMain.handle('open-folder', async (_evt, filePath) => {
   }
 });
 
+// 窗口尺寸获取与设置
+ipcMain.handle('get-window-size', async () => {
+  if (!mainWindow) return [0, 0];
+  return mainWindow.getSize();
+});
+
+ipcMain.handle('set-window-height', async (_evt, height) => {
+  try {
+    if (!mainWindow) return false;
+    const [w] = mainWindow.getSize();
+    const minH = 500;
+    const maxH = 2400;
+    const newH = Math.max(minH, Math.min(maxH, Math.round(Number(height) || 0)));
+    mainWindow.setSize(w, newH);
+    return true;
+  } catch (e) {
+    console.error('set-window-height failed:', e);
+    return false;
+  }
+});
+
 ipcMain.handle('save-excel', async (_evt, data) => {
   try {
     // 生成带时间戳的默认文件名

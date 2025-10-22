@@ -8,8 +8,9 @@
   "scripts": {
     "dev": "vite",
     "build:renderer": "vite build",
-    "start": "npm run build:renderer && electron .",
-    "dev:electron": "cross-env LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 electron .",
+    "electron:utf8": "powershell -NoProfile -Command \"$OutputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & electron .\"",
+    "start": "npm run build:renderer && npm run electron:utf8",
+    "dev:electron": "powershell -NoProfile -Command \"$OutputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; & electron .\"",
     "pack": "npm run build:renderer && electron-builder --dir",
     "build": "npm run build:renderer && cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
   },

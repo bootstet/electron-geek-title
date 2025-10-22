@@ -97,6 +97,7 @@
                   <option value="doubao-endpoint">豆包-推理接入点 (需手动配置)</option>
                 </optgroup>
                 <optgroup label="豆包通用模型">
+                  <option value="doubao-1-5-vision-pro-250328">豆包 Doubao-1.5-vision-pro</option>
                   <option value="doubao-4o">豆包-4o (视觉理解)</option>
                   <option value="doubao-vision">豆包-vision (视觉理解)</option>
                   <option value="doubao-multimodal">豆包-multimodal (多模态)</option>
@@ -248,16 +249,27 @@
       <!-- 内容区域，只在非折叠状态下显示 -->
       <div v-show="!isResultsPanelCollapsed" class="results-content">
       
-      <!-- 日志显示区域 -->
-      <div v-if="operationLogs.length > 0" class="logs-section" style="margin-bottom: 12px;">
+      <!-- 日志显示区域（即使没有日志也保留容器，方便拖拽） -->
+      <div class="logs-section" style="margin-bottom: 8px;">
         <div style="font-size: 13px; color: #666; margin-bottom: 4px;">操作日志:</div>
-        <div class="log-container" style="max-height: 80px; overflow-y: auto; background: #f8f9fa; padding: 8px; border-radius: 4px; font-size: 12px;">
+        <div 
+          class="log-container" 
+          :style="{ height: logsHeight + 'px', overflowY: 'auto', background: '#f8f9fa', padding: '8px', borderRadius: '4px', fontSize: '12px' }"
+        >
+          <div v-if="operationLogs.length === 0" style="color:#999; font-size:12px;">暂无日志</div>
           <div v-for="(log, index) in operationLogs" :key="index" :class="['log-entry', log.type]">
             <span class="log-time">{{ log.time }}</span>
             <span class="log-message">{{ log.message }}</span>
           </div>
         </div>
       </div>
+      <!-- 拖拽调整日志与表格高度的句柄（始终可见） -->
+      <div 
+        class="vertical-resize-handle" 
+        @mousedown="onLogsResizeMouseDown" 
+        @touchstart.prevent="onLogsResizeTouchStart"
+        :title="'拖动调整日志高度，同时调整窗口高度'"
+      ></div>
       
       <div v-if="results.length === 0 && !isGenerating" style="color: #999; font-size: 13px;">
         软件支持同时生成中文标题和英文标题，提示词请参考页面的产品特征<br/>
@@ -326,6 +338,66 @@ const showApiKey = ref(false)
 const showMainApiKey = ref(false)
 const isResultsPanelCollapsed = ref(false)
 
+// 日志区域高度与拖拽状态
+const logsHeight = ref(100)
+let dragStartY = 0
+let startLogsHeight = 0
+let startWindowHeight = 0
+const MIN_LOGS_HEIGHT = 40
+const MAX_LOGS_HEIGHT = 600
+
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
+
+const onLogsResizeMouseDown = async (e) => {
+  dragStartY = e.clientY
+  startLogsHeight = logsHeight.value
+  try {
+    const size = await window.gt.getWindowSize?.()
+    startWindowHeight = Array.isArray(size) ? (size[1] || 0) : 0
+  } catch {}
+  window.addEventListener('mousemove', onLogsResizeMouseMove)
+  window.addEventListener('mouseup', onLogsResizeMouseUp)
+}
+
+const onLogsResizeMouseMove = (e) => {
+  const delta = e.clientY - dragStartY
+  logsHeight.value = clamp(startLogsHeight + delta, MIN_LOGS_HEIGHT, MAX_LOGS_HEIGHT)
+  const targetH = startWindowHeight + delta
+  window.gt.setWindowHeight?.(targetH)
+}
+
+const onLogsResizeMouseUp = () => {
+  window.removeEventListener('mousemove', onLogsResizeMouseMove)
+  window.removeEventListener('mouseup', onLogsResizeMouseUp)
+}
+
+const onLogsResizeTouchStart = async (e) => {
+  const touch = e.touches?.[0]
+  if (!touch) return
+  dragStartY = touch.clientY
+  startLogsHeight = logsHeight.value
+  try {
+    const size = await window.gt.getWindowSize?.()
+    startWindowHeight = Array.isArray(size) ? (size[1] || 0) : 0
+  } catch {}
+  window.addEventListener('touchmove', onLogsResizeTouchMove, { passive: false })
+  window.addEventListener('touchend', onLogsResizeTouchEnd)
+}
+
+const onLogsResizeTouchMove = (e) => {
+  const touch = e.touches?.[0]
+  if (!touch) return
+  const delta = touch.clientY - dragStartY
+  logsHeight.value = clamp(startLogsHeight + delta, MIN_LOGS_HEIGHT, MAX_LOGS_HEIGHT)
+  const targetH = startWindowHeight + delta
+  window.gt.setWindowHeight?.(targetH)
+}
+
+const onLogsResizeTouchEnd = () => {
+  window.removeEventListener('touchmove', onLogsResizeTouchMove)
+  window.removeEventListener('touchend', onLogsResizeTouchEnd)
+}
+
 const settings = ref({
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
   model: 'doubao-endpoint',
@@ -391,7 +463,7 @@ const startGeneration = async () => {
     // 豆包推理接入点
     'doubao-endpoint',
     // 豆包通用模型
-    'doubao-4o', 'doubao-vision', 'doubao-multimodal',
+    'doubao-1-5-vision-pro-250328', 'doubao-4o', 'doubao-vision', 'doubao-multimodal',
     // 阿里云模型
     'qwen-vl-max', 'qwen-vl-plus',
     // 智谱模型

@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld('gt', {
   saveCSV: (rows, filePath) => ipcRenderer.invoke('save-csv', rows, filePath),
   saveExcel: (data) => ipcRenderer.invoke('save-excel', data),
   checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
-  openFolder: (filePath) => ipcRenderer.invoke('open-folder', filePath)
+  openFolder: (filePath) => ipcRenderer.invoke('open-folder', filePath),
+  getWindowSize: () => ipcRenderer.invoke('get-window-size'),
+  setWindowHeight: (height) => ipcRenderer.invoke('set-window-height', height)
 });
