@@ -64,8 +64,8 @@
       <div class="toolbar-right">
         <span>并发数:</span>
         <input type="number" v-model.number="settings.concurrency" min="1" max="10" style="width: 60px" />
-        <button @click="exportCSV" :disabled="results.length === 0">批量改图名</button>
-        <button>下载新版</button>
+          <!--<button @click="exportCSV" :disabled="results.length === 0">批量改图</button> -->
+        <!--<button>下载新版</button> -->
       </div>
     </div>
 
@@ -118,7 +118,11 @@
             </div>
             <div v-if="settings.model === 'doubao-endpoint'" class="form-row">
               <label>推理接入点名称:</label>
-              <input v-model="settings.doubaoEndpoint" placeholder="例如: ep-20241015xxxxxx-xxxxx" />
+              <input 
+                v-model="settings.doubaoEndpoint" 
+                placeholder="例如: ep-20241015xxxxxx-xxxxx" 
+                @focus="ensureDefaultEndpoint"
+              />
               <small style="color: #666; font-size: 11px;">
                 请从火山引擎控制台复制您的推理接入点名称
               </small>
@@ -191,6 +195,9 @@
             </div>
             <div style="margin-top: 8px;">
               <input v-model="settings.filterChars" placeholder="中文标题#；#英文标题#；#题儿3D中敏感词" style="width: 100%" />
+              <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                过滤状态: {{ settings.filterEnabled ? '开启' : '关闭' }} | 过滤字符: "{{ settings.filterChars || '未设置' }}" 过滤词之间用；或者#分割
+              </div>
             </div>
             <div style="margin-top: 12px;">
               <div class="option-item">
@@ -205,11 +212,14 @@
                 <label for="suffix">添加后缀:</label>
               </div>
               <input v-model="settings.suffix" placeholder="Women's clothing" style="width: 100%; margin-top: 4px" />
+              <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                后缀状态: {{ settings.enableSuffix ? '开启' : '关闭' }} | 后缀内容: "{{ settings.suffix || '未设置' }}"
+              </div>
             </div>
-            <div style="margin-top: 12px;">
+            <!--<div style="margin-top: 12px;">
               <input v-model="settings.outputPath" placeholder="" style="flex: 1" />
               <button @click="selectOutputPath" style="margin-left: 8px">选择路径</button>
-            </div>
+            </div> -->
           </div>
         </div>
       </div>
@@ -300,7 +310,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, computed, nextTick } from 'vue'
 
 const selectedFolder = ref('')
 const imageFiles = ref([])
@@ -320,8 +330,8 @@ const settings = ref({
   baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
   model: 'doubao-endpoint',
   customModel: '',
-  doubaoEndpoint: '',
-  apiKey: '',
+  doubaoEndpoint: 'ep-20251015164704-dqbb7',
+  apiKey: 'cf871f68-b5ae-4271-83e2-d9b56e203edf',
   category: '',
   needCN: true,
   needEN: true,
@@ -332,7 +342,7 @@ const settings = ref({
   filterChars: '中文标题#；#英文标题#；#题儿3D中敏感词',
   enablePrefix: true,
   prefix: '1PC,2D',
-  enableSuffix: false,
+  enableSuffix: true,
   suffix: "Women's clothing",
   outputPath: '',
   removeChineseWhenEnglish: true,
@@ -449,6 +459,39 @@ const startGeneration = async () => {
         } else if (settingsData.model === 'doubao-endpoint') {
           actualModel = settingsData.doubaoEndpoint
         }
+        
+        // 记录请求信息到前端控制台
+        console.log('\n=== 准备发送API请求 ===')
+        console.log('文件:', fileName)
+        console.log('模型:', actualModel)
+        console.log('API端点:', settingsData.baseURL)
+        console.log('======================\n')
+        
+        // 在操作日志中显示Curl命令信息
+        addLog('info', `正在请求 ${actualModel} API: ${fileName}`)
+        const maskedKey = settingsData.apiKey ? `${settingsData.apiKey.substring(0, 8)}...${settingsData.apiKey.substring(settingsData.apiKey.length - 4)}` : ''
+        
+        // 生成完整的curl命令（隐藏图片数据）
+        const curlPayload = {
+          model: actualModel,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'text', text: settingsData.basePrompt || '' },
+              { type: 'image_url', image_url: { url: '[IMAGE_BASE64_DATA_HIDDEN]' } }
+            ]
+          }],
+          max_tokens: 500
+        }
+        
+        const curlCommand = `curl -X POST "${settingsData.baseURL}/chat/completions" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${maskedKey}" \\
+  -d '${JSON.stringify(curlPayload, null, 2)}'`
+        
+        addLog('info', 'Curl命令（控制台查看完整命令）:')
+        console.log('\n=== 完整Curl命令 ===\n' + curlCommand + '\n==================\n')
+        
         const payload = {
           files: [String(imagePath)],
           baseURL: settingsData.baseURL || 'https://api.openai.com/v1',
@@ -462,7 +505,7 @@ const startGeneration = async () => {
           minSize: parseInt(settingsData.minSize) || 300,
           quality: 80,
           removeChineseWhenEnglish: settingsData.removeChineseWhenEnglish === true,
-          filterChars: settingsData.filterChars || '',
+          filterChars: settingsData.filterEnabled ? (settingsData.filterChars || '') : '',
           prefix: '', // 不传递前缀给AI，由AI根据提示词生成
           suffix: settingsData.enableSuffix ? (settingsData.suffix || '') : '',
           maxTokens: 500,
@@ -581,7 +624,24 @@ const saveSettings = async () => {
 const loadSettings = async () => {
   const savedSettings = await window.gt.getSettings()
   if (savedSettings) {
-    Object.assign(settings.value, savedSettings)
+    // 对于特定字段，如果保存的设置为空或未定义，则使用默认值
+    const merged = { ...settings.value, ...savedSettings }
+    
+    // 确保关键字段有默认值（包括空字符串的情况）
+    if (!merged.doubaoEndpoint || merged.doubaoEndpoint.trim() === '') {
+      merged.doubaoEndpoint = 'ep-20251015164704-dqbb7'
+    }
+    if (!merged.apiKey || merged.apiKey.trim() === '') {
+      merged.apiKey = 'cf871f68-b5ae-4271-83e2-d9b56e203edf'
+    }
+    
+    Object.assign(settings.value, merged)
+    
+    // 如果设置了默认值，立即保存以确保持久化
+    if (merged.doubaoEndpoint === 'ep-20251015164704-dqbb7' || 
+        merged.apiKey === 'cf871f68-b5ae-4271-83e2-d9b56e203edf') {
+      await saveSettings()
+    }
   }
 }
 
@@ -678,8 +738,10 @@ const resetSettings = async () => {
     // 重置为默认设置
     settings.value = {
       baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
-      model: 'Doubao-Seadream-4.0',
-      apiKey: '',
+      model: 'doubao-endpoint',
+      customModel: '',
+      doubaoEndpoint: 'ep-20251015164704-dqbb7',
+      apiKey: 'cf871f68-b5ae-4271-83e2-d9b56e203edf',
       category: '',
       needCN: true,
       needEN: true,
@@ -690,16 +752,19 @@ const resetSettings = async () => {
       filterChars: '中文标题#；#英文标题#；#题儿3D中敏感词',
       enablePrefix: true,
       prefix: '1PC,2D',
-      enableSuffix: false,
+      enableSuffix: true,
       suffix: "Women's clothing",
       outputPath: '',
       removeChineseWhenEnglish: true,
       basePrompt: `你是一名跨境电商运营，图片是印在毛毯上的，现在要对这款毛毯，写一个符合跨境电商的中文标题和英文标题，需要180至220个字符的英文标题和180至220个字符的中文标题，不要表情和特殊符号，中文标题和英文标题之间用|分开`
     }
-    tempApiKey.value = ''
+    // 更新API弹窗中的临时API Key
+    tempApiKey.value = settings.value.apiKey
     await saveSettings()
+    await nextTick() // 确保UI更新
     addLog('success', '设置已重置为默认值')
-    closeApiModal()
+    // 不关闭API弹窗，让用户看到重置的结果
+    // closeApiModal()
   }
 }
 
@@ -762,26 +827,52 @@ const exportToCSV = async () => {
     const rawResults = JSON.parse(JSON.stringify(results.value))
     const prefix = (settings.value.prefix || '').trim()
     
-    // 智能处理前缀：移除 **** 并查验前缀存在
-    const ensurePrefixed = (t) => {
+    // 处理中文标题的函数（添加前缀和后缀）
+    const ensurePrefixedCN = (t) => {
       let s = String(t || '').trim()
       // 移除 **** 分隔符
       s = s.replace(/\s*\*\*\*\*\s*/g, ' ').replace(/\s+/g, ' ').trim()
       
-      // 如果没有设置前缀，直接返回
-      if (!prefix || !settings.value.enablePrefix) return s
-      
-      // 检查是否已经包含前缀，如果没有则添加
-      if (!s.startsWith(prefix)) {
-        return `${prefix} ${s}`
+      // 添加前缀
+      if (prefix && settings.value.enablePrefix && !s.startsWith(prefix)) {
+        s = `${prefix} ${s}`
       }
+      
+      // 添加后缀
+      const suffix = (settings.value.suffix || '').trim()
+      if (suffix && settings.value.enableSuffix && !s.endsWith(suffix)) {
+        s = `${s} ${suffix}`
+      }
+      
+      return s
+    }
+    
+    // 处理英文标题的函数（添加前缀和后缀）
+    const ensurePrefixedEN = (t) => {
+      let s = String(t || '').trim()
+      // 移除 **** 分隔符
+      s = s.replace(/\s*\*\*\*\*\s*/g, ' ').replace(/\s+/g, ' ').trim()
+      // 移除英文标题前面的 | 分隔符
+      s = s.replace(/^\s*\|\s*/, '').trim()
+      
+      // 添加前缀
+      if (prefix && settings.value.enablePrefix && !s.startsWith(prefix)) {
+        s = `${prefix} ${s}`
+      }
+      
+      // 添加后缀
+      const suffix = (settings.value.suffix || '').trim()
+      if (suffix && settings.value.enableSuffix && !s.endsWith(suffix)) {
+        s = `${s} ${suffix}`
+      }
+      
       return s
     }
 
     const exportRows = rawResults.map(result => ({
       '货号': String(getBaseName(result.file)),
-      '增哥标题': ensurePrefixed(result.cn || ''),
-      '标题2（英文，没有可以留空）': String(result.en || '')
+      '标题1': ensurePrefixedCN(result.cn || ''), // 只放中文标题
+      '标题2（英文，没有可以留空）': ensurePrefixedEN(result.en || '') // 只放英文标题，也添加前缀
     }))
     
     console.log('Calling saveCSV with data:', exportRows)
@@ -801,6 +892,17 @@ const exportToCSV = async () => {
       } catch (e) {
         console.warn('Could not verify file creation:', e)
       }
+      
+      // 稍作延迟再打开文件夹，确保文件系统已更新
+      setTimeout(async () => {
+        try {
+          await window.gt.openFolder(savedPath)
+          addLog('info', '已打开文件所在文件夹')
+        } catch (e) {
+          console.warn('Could not open folder:', e)
+          addLog('warning', '无法打开文件夹')
+        }
+      }, 500) // 500毫秒延迟，确保文件写入完成
     } else {
       addLog('warning', '导出已取消或失败')
     }
@@ -819,26 +921,52 @@ const exportToExcel = async () => {
   try {
     const prefix = (settings.value.prefix || '').trim()
     
-    // 智能处理前缀：移除 **** 并查验前缀存在
-    const ensurePrefixed = (t) => {
+    // 处理中文标题的函数（添加前缀和后缀）
+    const ensurePrefixedCN = (t) => {
       let s = String(t || '').trim()
       // 移除 **** 分隔符
       s = s.replace(/\s*\*\*\*\*\s*/g, ' ').replace(/\s+/g, ' ').trim()
       
-      // 如果没有设置前缀，直接返回
-      if (!prefix || !settings.value.enablePrefix) return s
-      
-      // 检查是否已经包含前缀，如果没有则添加
-      if (!s.startsWith(prefix)) {
-        return `${prefix} ${s}`
+      // 添加前缀
+      if (prefix && settings.value.enablePrefix && !s.startsWith(prefix)) {
+        s = `${prefix} ${s}`
       }
+      
+      // 添加后缀
+      const suffix = (settings.value.suffix || '').trim()
+      if (suffix && settings.value.enableSuffix && !s.endsWith(suffix)) {
+        s = `${s} ${suffix}`
+      }
+      
+      return s
+    }
+    
+    // 处理英文标题的函数（添加前缀和后缀）
+    const ensurePrefixedEN = (t) => {
+      let s = String(t || '').trim()
+      // 移除 **** 分隔符
+      s = s.replace(/\s*\*\*\*\*\s*/g, ' ').replace(/\s+/g, ' ').trim()
+      // 移除英文标题前面的 | 分隔符
+      s = s.replace(/^\s*\|\s*/, '').trim()
+      
+      // 添加前缀
+      if (prefix && settings.value.enablePrefix && !s.startsWith(prefix)) {
+        s = `${prefix} ${s}`
+      }
+      
+      // 添加后缀
+      const suffix = (settings.value.suffix || '').trim()
+      if (suffix && settings.value.enableSuffix && !s.endsWith(suffix)) {
+        s = `${s} ${suffix}`
+      }
+      
       return s
     }
 
     const exportData = results.value.map(result => ({
       '货号': String(getBaseName(result.file)),
-      '增哥标题': ensurePrefixed(result.cn || ''),
-      '标题2（英文，没有可以留空）': String(result.en || '')
+      '标题1': ensurePrefixedCN(result.cn || ''), // 只放中文标题
+      '标题2（英文，没有可以留空）': ensurePrefixedEN(result.en || '') // 只放英文标题，也添加前缀
     }))
     
     console.log('Calling saveExcel with data:', exportData)
@@ -848,6 +976,17 @@ const exportToExcel = async () => {
     if (savedPath) {
       addLog('success', `文件已导出到: ${savedPath}`)
       addLog('info', `包含 ${results.value.length} 条记录`)
+      
+      // 稍作延迟再打开文件夹，确保文件系统已更新
+      setTimeout(async () => {
+        try {
+          await window.gt.openFolder(savedPath)
+          addLog('info', '已打开文件所在文件夹')
+        } catch (e) {
+          console.warn('Could not open folder:', e)
+          addLog('warning', '无法打开文件夹')
+        }
+      }, 500) // 500毫秒延迟，确保文件写入完成
     } else {
       addLog('warning', '导出已取消或失败')
     }
@@ -865,8 +1004,40 @@ const clearResults = () => {
   addLog('info', '已清空结果')
 }
 
-onMounted(() => {
-  loadSettings()
+// 确保默认值的函数
+ const ensureDefaultEndpoint = () => {
+  if (!settings.value.doubaoEndpoint || settings.value.doubaoEndpoint.trim() === '') {
+    settings.value.doubaoEndpoint = 'ep-20251015164704-dqbb7'
+    saveSettings()
+  }
+}
+
+onMounted(async () => {
+  await loadSettings()
+  
+  // 在加载后再次检查并强制设置默认值
+  console.log('Current settings after load:', {
+    doubaoEndpoint: settings.value.doubaoEndpoint,
+    apiKey: settings.value.apiKey
+  })
+  
+  let needsSave = false
+  
+  // 强制设置默认值（无论什么情况都设置）
+  settings.value.doubaoEndpoint = 'ep-20251015164704-dqbb7'
+  settings.value.apiKey = 'cf871f68-b5ae-4271-83e2-d9b56e203edf'
+  needsSave = true
+  
+  console.log('Force set to:', {
+    doubaoEndpoint: settings.value.doubaoEndpoint,
+    apiKey: settings.value.apiKey
+  })
+  
+  if (needsSave) {
+    await saveSettings()
+    await nextTick() // 确保OM更新
+    console.log('Settings saved with default values')
+  }
 })
 
 // 自动选择第一张图片

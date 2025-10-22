@@ -11,5 +11,6 @@ contextBridge.exposeInMainWorld('gt', {
   renameByTitle: (items, pattern) => ipcRenderer.invoke('rename-by-title', items, pattern),
   saveCSV: (rows, filePath) => ipcRenderer.invoke('save-csv', rows, filePath),
   saveExcel: (data) => ipcRenderer.invoke('save-excel', data),
-  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath)
+  checkFileExists: (filePath) => ipcRenderer.invoke('check-file-exists', filePath),
+  openFolder: (filePath) => ipcRenderer.invoke('open-folder', filePath)
 });

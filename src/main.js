@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -150,7 +150,15 @@ ipcMain.handle('generate-titles', async (_evt, payload) => {
       const src = compress ? (await compressImageInternal(file, { minSize, quality })) : file;
       const variables = { category: category || '' };
       const prompt = makePrompt(basePrompt, variables);
+      
+      console.log(`\n=== 开始处理图片: ${path.basename(file)} ===`);
+      console.log(`使用模型: ${model}`);
+      console.log(`API端点: ${baseURL}`);
+      console.log(`图片路径: ${src}`);
+      console.log('===================================\n');
+      
       const res = await chatWithVision({ baseURL, apiKey, model, imagePath: src, prompt, maxTokens });
+      console.log('接口响应结果:', res)
       const cn = needCN ? sanitizeTitle(res.cn || res.text || '', { language: 'zh', filterChars, prefix, suffix }) : '';
       const enBase = res.en || res.text || '';
       const en = needEN ? sanitizeTitle(enBase, { language: 'en', filterChars, prefix, suffix, removeChineseWhenEnglish }) : '';
@@ -278,19 +286,24 @@ ipcMain.handle('save-csv', async (_evt, rows, filePath) => {
       
       console.log('Showing save dialog...');
       
-      // 设置默认保存路径为D盘根目录
-      const defaultDir = 'D:\\';
+      // 设置默认保存路径为D:\2-file\image
+      const defaultDir = 'D:\\2-file\\image';
       const fullDefaultPath = path.join(defaultDir, defaultFileName);
       console.log('Default save path:', fullDefaultPath);
       
-      // 确保D盘存在，如果不存在则使用桌面
+      // 确保目标目录存在，如果不存在则创建
       let finalDefaultPath;
-      if (fs.existsSync('D:\\')) {
+      if (!fs.existsSync(defaultDir)) {
+        try {
+          fs.mkdirSync(defaultDir, { recursive: true });
+        } catch (error) {
+          console.warn('无法创建目标目录，使用桌面:', error);
+          const desktopPath = path.join(os.homedir(), 'Desktop');
+          finalDefaultPath = path.join(desktopPath, defaultFileName);
+        }
+      }
+      if (!finalDefaultPath) {
         finalDefaultPath = fullDefaultPath;
-      } else {
-        // 如果D盘不存在，使用桌面
-        const desktopPath = path.join(os.homedir(), 'Desktop');
-        finalDefaultPath = path.join(desktopPath, defaultFileName);
       }
       console.log('Final default save path:', finalDefaultPath);
       
@@ -341,6 +354,19 @@ ipcMain.handle('check-file-exists', async (_evt, filePath) => {
   }
 });
 
+// 添加打开文件夹的功能
+ipcMain.handle('open-folder', async (_evt, filePath) => {
+  try {
+    const path = require('path');
+    const folderPath = path.dirname(filePath);
+    await shell.openPath(folderPath);
+    return true;
+  } catch (error) {
+    console.error('Open folder error:', error);
+    return false;
+  }
+});
+
 ipcMain.handle('save-excel', async (_evt, data) => {
   try {
     // 生成带时间戳的默认文件名
@@ -353,19 +379,24 @@ ipcMain.handle('save-excel', async (_evt, data) => {
                      now.getSeconds().toString().padStart(2, '0');
     const defaultFileName = `titles_${timestamp}.xlsx`;
     
-    // 设置默认保存路径为D盘根目录
-    const defaultDir = 'D:\\';
+    // 设置默认保存路径为D:\2-file\image
+    const defaultDir = 'D:\\2-file\\image';
     const fullDefaultPath = path.join(defaultDir, defaultFileName);
     console.log('Excel default save path:', fullDefaultPath);
     
-    // 确保D盘存在，如果不存在则使用桌面
+    // 确保目标目录存在，如果不存在则创建
     let finalDefaultPath;
-    if (fs.existsSync('D:\\')) {
+    if (!fs.existsSync(defaultDir)) {
+      try {
+        fs.mkdirSync(defaultDir, { recursive: true });
+      } catch (error) {
+        console.warn('无法创建目标目录，使用桌面:', error);
+        const desktopPath = path.join(os.homedir(), 'Desktop');
+        finalDefaultPath = path.join(desktopPath, defaultFileName);
+      }
+    }
+    if (!finalDefaultPath) {
       finalDefaultPath = fullDefaultPath;
-    } else {
-      // 如果D盘不存在，使用桌面
-      const desktopPath = path.join(os.homedir(), 'Desktop');
-      finalDefaultPath = path.join(desktopPath, defaultFileName);
     }
     console.log('Excel final default save path:', finalDefaultPath);
     
@@ -381,8 +412,8 @@ ipcMain.handle('save-excel', async (_evt, data) => {
     
     if (!result) return null;
     
-    // 确保文件名没有非法字符
-    const target = result.replace(/[<>:"|?*]/g, '_');
+    // 不需要替换路径中的字符，只需要使用用户选择的路径
+    const target = result;
     
     // 由于没有xlsx库，创建 CSV格式(但保持用户选择的扩展名)
     const headers = Object.keys(data[0] || {});

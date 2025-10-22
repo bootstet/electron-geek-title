@@ -27,6 +27,37 @@ async function chatWithVision({ baseURL, apiKey, model, imagePath, prompt, maxTo
     ],
     max_tokens: maxTokens
   };
+  
+  // 生成 curl 命令用于日志记录
+  const maskedApiKey = `${apiKey.substring(0, 8)}...${apiKey.substring(apiKey.length - 4)}`;
+  
+  // 创建一个用于curl的body副本，隐藏敏感信息
+  const curlBody = {
+    ...body,
+    messages: body.messages.map(msg => ({
+      ...msg,
+      content: msg.content.map(item => {
+        if (item.type === 'image_url') {
+          return { type: 'image_url', image_url: { url: '[IMAGE_DATA_BASE64_HIDDEN]' } };
+        }
+        return item;
+      })
+    }))
+  };
+  
+  const curlCommand = `curl -X POST "${url}" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer ${maskedApiKey}" \\
+  -d '${JSON.stringify(curlBody, null, 2)}'`;
+  
+  console.log('\n=== API 请求 Curl 命令 ===');
+  console.log('模型:', model);
+  console.log('端点:', url);
+  console.log('Curl 命令:');
+  console.log(curlCommand);
+  console.log('注意: 图片数据已隐藏，实际请求包含完整的base64图片数据');
+  console.log('=========================\n');
+  
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
